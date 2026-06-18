@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  docling-service:
+    build: .
+    image: docling-service:latest
+    ports:
+      - "8001:8001"
+
+    # Hard memory ceiling — critical given the OOM history on this host.
+    # Each in-flight OCR request can spike well above the baseline model
+    # footprint (~3–5 GB idle), so the ceiling must be sized as:
+    #   baseline + (MAX_CONCURRENT_REQUESTS × per-request OCR peak)
+    # On native-text PDFs the per-request overhead is ~200–500 MB.
+    # On scanned OCR-heavy PDFs it can be 1–2 GB per request.
+    # At MAX_CONCURRENT_REQUESTS=4 with mixed load, 24–32 GB is a safe ceiling.
+    mem_limit: "24g"
+    memswap_limit: "24g"   # disable swap — OOM-kill is preferable to swap thrash
+
+    environment:
+      # Concurrency cap — reduce if OOM events recur on scanned documents
+      MAX_CONCURRENT_REQUESTS: "4"
+      QUEUE_TIMEOUT_SECONDS: "60"
+      MAX_FILE_SIZE_MB: "50"
+
+      # Thread budget: prevents native math libs from spawning N×cores threads
+      # per request.  With 4 concurrent requests, total OS threads will be
+      # 4 × OMP_NUM_THREADS for the math-heavy parts.
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+
+      DEFAULT_OCR_MODE: "auto"
+      DEFAULT_TABLE_MODE: "fast"
+      LOG_LEVEL: "INFO"
+
+    # Volume-mount the model cache so container rebuilds don't re-download
+    # weights (~3–5 GB) every time.  Remove to bake models into the image instead.
+    volumes:
+      - docling-model-cache:/app/.cache
+
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s   # allow time for model loading on first start
+
+volumes:
+  docling-model-cache:

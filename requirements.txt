@@ -1,0 +1,47 @@
+# --- Core service ---
+fastapi>=0.110.0,<1.0.0
+uvicorn[standard]>=0.29.0,<1.0.0
+python-multipart>=0.0.9
+pydantic>=2.0.0,<3.0.0
+pydantic-settings>=2.0.0,<3.0.0
+
+# --- PDF conversion ---
+# Probed against 2.103.0; AcceleratorOptions API and OcrAutoOptions changed
+# between 2.5 and 2.103, so pin the lower bound tightly.
+docling>=2.103.0,<3.0.0
+
+# CPU OCR backend: RapidOCR via ONNX Runtime (CPU-only).
+# docling lists OCR backends as optional extras; we pin explicitly to lock
+# in the CPU-only onnxruntime variant and to guarantee the package is present.
+# NOTE: rapidocr-onnxruntime and onnxruntime-gpu are mutually exclusive — do
+# not install onnxruntime-gpu alongside this package.
+rapidocr-onnxruntime>=1.3.0
+
+# GPU OCR backend: EasyOCR (PyTorch-based, supports CUDA via AcceleratorOptions).
+# Required for POST /convert-gpu. EasyOCR.use_gpu is derived automatically
+# from AcceleratorOptions.device in docling 2.103+ — setting use_gpu=True
+# explicitly is deprecated.
+easyocr>=1.7.0
+
+# Benchmark script
+requests>=2.31.0
+
+# --- Testing ---
+pytest>=8.0.0
+pytest-asyncio>=0.23.0
+httpx>=0.27.0          # required by FastAPI TestClient
+reportlab>=4.0.0       # generates test PDFs programmatically
+
+# ---------------------------------------------------------------------------
+# GPU runtime prerequisites (NOT installable via pip on most systems)
+# ---------------------------------------------------------------------------
+# To use POST /convert-gpu you need a CUDA-capable torch build:
+#
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+#
+# Do NOT install plain `torch` from PyPI alongside GPU docling — PyPI torch
+# is CPU-only and EasyOCR will silently fall back to CPU.
+#
+# The service detects GPU availability at startup via torch.cuda.is_available()
+# and logs/reports the result.  If no GPU is found, /convert-gpu returns 503.
+# ---------------------------------------------------------------------------
